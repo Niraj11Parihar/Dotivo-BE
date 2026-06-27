@@ -7,6 +7,8 @@ import authRoutes from './routes/auth.routes';
 import usersRoutes from './routes/users.routes';
 import goalsRoutes from './routes/goals.routes';
 import dailyPlanRoutes from './routes/daily-plan.routes';
+import adminRoutes from './routes/admin.routes';
+import { getActiveQuotesByCategory } from './controllers/quote.controller';
 
 const app = express();
 
@@ -19,6 +21,8 @@ app.use(express.json());
 app.use('/auth', authRoutes);
 app.use('/users', usersRoutes);
 app.use('/goals', goalsRoutes);
+app.use('/admin', adminRoutes);
+app.get('/public/quotes', getActiveQuotesByCategory);
 
 // Health Check (registered before the '/' wildcard mount)
 app.get('/', (req, res) => {
