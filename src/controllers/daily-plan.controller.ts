@@ -153,10 +153,31 @@ export const logCompletion = async (req: any, res: Response) => {
 export const getHistory = async (req: any, res: Response) => {
   try {
     const range = parseInt(req.query.range as string) || 30;
-    const history = await DayStatus.find({ userId: new Types.ObjectId(req.user.sub) })
+    const plans = await DailyPlan.find({ userId: new Types.ObjectId(req.user.sub) })
       .sort({ date: -1 })
       .limit(range)
       .exec();
+
+    const history = plans.map((plan: any) => {
+      let completedGoals = 0;
+      let totalActive = 0;
+      for (const g of plan.goals) {
+        // Simple heuristic: if it has targetCount, check it. The backend model doesn't explicitly store 'skipped' status in goals array (it's frontend only), but we can assume normal goals.
+        totalActive++;
+        if (g.completedCount >= g.targetCount) {
+          completedGoals++;
+        }
+      }
+      const completionScore = totalActive > 0 ? completedGoals / totalActive : 0;
+      
+      return {
+        date: plan.date,
+        status: plan.summaryStatus,
+        completionScore,
+        goals: plan.goals
+      };
+    });
+    
     return res.json(history);
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
