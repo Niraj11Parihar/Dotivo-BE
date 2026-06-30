@@ -23,7 +23,7 @@ export const createGoalSchema = Joi.object({
   targetCount: Joi.number().optional(),
   isDailyMinimum: Joi.boolean().optional(),
   isTop3Default: Joi.boolean().optional(),
-  reminderTime: Joi.string().optional(),
+  reminderTime: Joi.string().allow('').optional(),
   color: Joi.string().optional(),
   icon: Joi.string().optional(),
 });
