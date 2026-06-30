@@ -12,7 +12,9 @@ const evaluateAndSaveDayStatus = async (userId: string, date: string, plan: any,
   let hasMinimums = false;
   let completedGoals = 0;
 
+  let hasAnyProgress = false;
   for (const g of plan.goals) {
+    if (g.completedCount > 0) hasAnyProgress = true;
     if (g.isDailyMinimum) {
       hasMinimums = true;
       if (g.completedCount < g.targetCount) minimumsMet = false;
@@ -21,8 +23,13 @@ const evaluateAndSaveDayStatus = async (userId: string, date: string, plan: any,
   }
 
   let status = 'grey';
-  if (hasMinimums && minimumsMet) status = 'green';
-  else if (completedGoals > 0) status = 'partial';
+  if (hasMinimums) {
+    if (minimumsMet && plan.goals.length > 0) status = 'green';
+    else if (hasAnyProgress) status = 'partial';
+  } else {
+    if (completedGoals > 0) status = 'green';
+    else if (hasAnyProgress) status = 'partial';
+  }
 
   plan.summaryStatus = status;
 
@@ -139,6 +146,22 @@ export const logCompletion = async (req: any, res: Response) => {
       plan.goals[goalIndex].completedCount = completedCount;
       // Mongoose doesn't track subdocument mutations automatically — must mark modified
       plan.markModified('goals');
+    } else {
+      const template = await GoalTemplate.findById(new Types.ObjectId(goalTemplateId)).exec();
+      if (template) {
+        plan.goals.push({
+          goalTemplateId: template._id,
+          title: template.title,
+          category: template.category,
+          targetCount: template.targetCount,
+          completedCount,
+          isDailyMinimum: template.isDailyMinimum,
+          isTop3Default: template.isTop3Default,
+          color: template.color,
+          icon: template.icon,
+        });
+        plan.markModified('goals');
+      }
     }
 
     await evaluateAndSaveDayStatus(userId, date, plan);
