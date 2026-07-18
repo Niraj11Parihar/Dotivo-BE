@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import mongoose from 'mongoose';
+import https from 'https';
 import { config } from './config';
 import authRoutes from './routes/auth.routes';
 import usersRoutes from './routes/users.routes';
@@ -11,6 +12,18 @@ import adminRoutes from './routes/admin.routes';
 import { getActiveQuotesByCategory } from './controllers/quote.controller';
 
 const app = express();
+
+// Self-ping to prevent Render free tier from sleeping
+const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
+if (RENDER_URL) {
+  setInterval(() => {
+    https.get(RENDER_URL, (res) => {
+      console.log(`Self-ping status: ${res.statusCode}`);
+    }).on('error', (err) => {
+      console.error('Self-ping error:', err.message);
+    });
+  }, 10 * 60 * 1000); // 10 minutes
+}
 
 // Middleware
 app.use(helmet());
