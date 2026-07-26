@@ -1,10 +1,5 @@
-export default () => ({
-  port: parseInt(process.env.PORT || '3000', 10),
-  database: {
-    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/dotivo',
-  },
-  jwt: {
-    secret: process.env.JWT_SECRET || 'fallback-secret',
-    expiresIn: process.env.JWT_EXPIRES_IN || '30d',
-  },
-});
+// This file is kept only as a placeholder.
+// The authoritative config is in ./index.ts — use that instead.
+// This NestJS-style configuration module is not used anywhere in the Express app.
+export default () => ({});
+

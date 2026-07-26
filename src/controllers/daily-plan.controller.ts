@@ -90,8 +90,8 @@ const generatePlanForDate = async (userId: string, date: string) => {
   } catch (e: any) {
     await session.abortTransaction();
     if (e.code === 11000) {
-      plan = await DailyPlan.findOne({ userId: new Types.ObjectId(userId), date }).session(session as any).exec();
-
+      // [BUG-07] Read WITHOUT the aborted session — using an aborted session throws on Atlas
+      plan = await DailyPlan.findOne({ userId: new Types.ObjectId(userId), date }).exec();
     } else {
       throw e;
     }
@@ -114,7 +114,7 @@ export const getDailyPlan = async (req: any, res: Response) => {
     }
     return res.json(plan);
   } catch (err: any) {
-    return res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
@@ -122,6 +122,16 @@ export const logCompletion = async (req: any, res: Response) => {
   try {
     const userId = req.user.sub;
     const { goalTemplateId, date, completedCount, note, source } = req.body;
+
+    // [BUG-02] Verify ownership: ensure the goal belongs to the requesting user
+    const goalTemplate = await GoalTemplate.findOne({
+      _id: new Types.ObjectId(goalTemplateId),
+      userId: new Types.ObjectId(userId),
+    }).exec();
+
+    if (!goalTemplate) {
+      return res.status(403).json({ message: 'Forbidden: goal does not belong to this user.' });
+    }
 
     // The frontend always sends the new absolute completedCount total (not a delta).
     // We store it in the audit log for traceability.
@@ -147,21 +157,18 @@ export const logCompletion = async (req: any, res: Response) => {
       // Mongoose doesn't track subdocument mutations automatically — must mark modified
       plan.markModified('goals');
     } else {
-      const template = await GoalTemplate.findById(new Types.ObjectId(goalTemplateId)).exec();
-      if (template) {
-        plan.goals.push({
-          goalTemplateId: template._id,
-          title: template.title,
-          category: template.category,
-          targetCount: template.targetCount,
-          completedCount,
-          isDailyMinimum: template.isDailyMinimum,
-          isTop3Default: template.isTop3Default,
-          color: template.color,
-          icon: template.icon,
-        });
-        plan.markModified('goals');
-      }
+      plan.goals.push({
+        goalTemplateId: goalTemplate._id,
+        title: goalTemplate.title,
+        category: goalTemplate.category,
+        targetCount: goalTemplate.targetCount,
+        completedCount,
+        isDailyMinimum: goalTemplate.isDailyMinimum,
+        isTop3Default: goalTemplate.isTop3Default,
+        color: goalTemplate.color,
+        icon: goalTemplate.icon,
+      });
+      plan.markModified('goals');
     }
 
     await evaluateAndSaveDayStatus(userId, date, plan);
@@ -169,13 +176,16 @@ export const logCompletion = async (req: any, res: Response) => {
 
     return res.json(plan);
   } catch (err: any) {
-    return res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
 export const getHistory = async (req: any, res: Response) => {
   try {
-    const range = parseInt(req.query.range as string) || 30;
+    // [STD-04] Cap range to 90 to prevent abuse — user cannot dump the entire history collection
+    const requestedRange = parseInt(req.query.range as string) || 30;
+    const range = Math.min(requestedRange, 90);
+
     const plans = await DailyPlan.find({ userId: new Types.ObjectId(req.user.sub) })
       .sort({ date: -1 })
       .limit(range)
@@ -185,7 +195,6 @@ export const getHistory = async (req: any, res: Response) => {
       let completedGoals = 0;
       let totalActive = 0;
       for (const g of plan.goals) {
-        // Simple heuristic: if it has targetCount, check it. The backend model doesn't explicitly store 'skipped' status in goals array (it's frontend only), but we can assume normal goals.
         totalActive++;
         if (g.completedCount >= g.targetCount) {
           completedGoals++;
@@ -203,6 +212,6 @@ export const getHistory = async (req: any, res: Response) => {
     
     return res.json(history);
   } catch (err: any) {
-    return res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };

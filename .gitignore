@@ -4,3 +4,10 @@ dist
 build
 coverage
 .DS_Store
+
+# [STD-12] Debug log files — never commit these
+*.txt
+*.log
+
+# One-off debug/test scripts
+test-dns.js

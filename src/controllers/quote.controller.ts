@@ -22,17 +22,24 @@ export const getQuoteById = async (req: Request, res: Response) => {
 
 export const createQuote = async (req: Request, res: Response) => {
   try {
+    // [SEC-07] req.body is already sanitized by validate(createQuoteSchema) middleware
+    // which strips unknown fields — no mass-assignment possible here
     const newQuote = new Quote(req.body);
     await newQuote.save();
     res.status(201).json(newQuote);
   } catch (err) {
-    res.status(500).json({ message: 'Error creating quote', error: err });
+    res.status(500).json({ message: 'Error creating quote' });
   }
 };
 
 export const updateQuote = async (req: Request, res: Response) => {
   try {
-    const updatedQuote = await Quote.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    // [SEC-07] req.body is already sanitized by validate(updateQuoteSchema) middleware
+    const updatedQuote = await Quote.findByIdAndUpdate(
+      req.params.id,
+      { $set: req.body },
+      { new: true, runValidators: true }
+    );
     if (!updatedQuote) return res.status(404).json({ message: 'Quote not found' });
     res.json(updatedQuote);
   } catch (err) {

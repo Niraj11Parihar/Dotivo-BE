@@ -19,5 +19,14 @@
     "noFallthroughCasesInSwitch": true,
     "esModuleInterop": true
   },
-  "exclude": ["node_modules", "dist", "**/*.spec.ts", "test"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.spec.ts",
+    "test",
+    "src/modules",
+    "src/database",
+    "src/middleware/guards",
+    "src/middleware/strategies"
+  ]
 }

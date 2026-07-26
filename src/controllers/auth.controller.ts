@@ -33,7 +33,8 @@ export const register = async (req: Request, res: Response) => {
       user: result,
     });
   } catch (err: any) {
-    return res.status(500).json({ message: err.message });
+    // [STD-05] Generic message — prevents leaking Mongoose validation errors or stack traces
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
@@ -56,6 +57,7 @@ export const login = async (req: Request, res: Response) => {
       user: userResult,
     });
   } catch (err: any) {
-    return res.status(500).json({ message: err.message });
+    // [STD-05] Generic message — prevents leaking internal details
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };

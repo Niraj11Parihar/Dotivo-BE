@@ -4,6 +4,14 @@ import { format } from 'date-fns';
 import { GoalTemplate } from '../models/goal-template.model';
 import { DailyPlan } from '../models/daily-plan.model';
 
+// Explicit allowlist of fields a user may update on their own goal template.
+// This is the last line of defence against mass-assignment, even if Joi is misconfigured.
+const ALLOWED_UPDATE_FIELDS = [
+  'title', 'category', 'frequencyType', 'selectedDays',
+  'targetCount', 'isDailyMinimum', 'isTop3Default',
+  'reminderTime', 'color', 'icon',
+] as const;
+
 export const create = async (req: any, res: Response) => {
   try {
     const newGoal = new GoalTemplate({
@@ -13,7 +21,7 @@ export const create = async (req: any, res: Response) => {
     await newGoal.save();
     return res.status(201).json(newGoal);
   } catch (err: any) {
-    return res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
@@ -25,15 +33,20 @@ export const findAll = async (req: any, res: Response) => {
     }).exec();
     return res.json(goals);
   } catch (err: any) {
-    return res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
 export const update = async (req: any, res: Response) => {
   try {
+    // Whitelist: only allow known, safe fields — never allow userId, status, or __proto__
+    const sanitized = Object.fromEntries(
+      Object.entries(req.body).filter(([k]) => (ALLOWED_UPDATE_FIELDS as readonly string[]).includes(k))
+    );
+
     const updatedGoal = await GoalTemplate.findOneAndUpdate(
       { _id: new Types.ObjectId(req.params.id), userId: new Types.ObjectId(req.user.sub) },
-      { $set: req.body },
+      { $set: sanitized },
       { new: true },
     ).exec();
 
@@ -42,7 +55,7 @@ export const update = async (req: any, res: Response) => {
     }
     return res.json(updatedGoal);
   } catch (err: any) {
-    return res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
@@ -69,7 +82,6 @@ export const deleteGoal = async (req: any, res: Response) => {
 
     return res.json({ message: 'Goal deleted successfully' });
   } catch (err: any) {
-    return res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
-

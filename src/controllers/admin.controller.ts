@@ -2,7 +2,19 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { AdminUser } from '../models/admin-user.model';
+import { User } from '../models/user.model'; // [STD-01] Top-level import — no more require() inside functions
 import { config } from '../config';
+
+/**
+ * Validates password strength. Min 12 chars, at least one uppercase, one digit, one special char.
+ */
+function isStrongPassword(password: string): boolean {
+  if (password.length < 12) return false;
+  if (!/[A-Z]/.test(password)) return false;
+  if (!/[0-9]/.test(password)) return false;
+  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) return false;
+  return true;
+}
 
 export const adminLogin = async (req: Request, res: Response) => {
   try {
@@ -39,10 +51,18 @@ export const createInitialAdmin = async (req: Request, res: Response) => {
     // Only allow this if no admins exist
     const count = await AdminUser.countDocuments();
     if (count > 0) {
-      return res.status(403).json({ message: 'Admins already exist' });
+      return res.status(403).json({ message: 'Admins already exist. Use POST /admin/admins to create additional admins.' });
     }
 
     const { name, email, password } = req.body;
+
+    // [SEC-03] Enforce password strength for initial admin creation
+    if (!isStrongPassword(password)) {
+      return res.status(400).json({
+        message: 'Password must be at least 12 characters and contain an uppercase letter, a number, and a special character.'
+      });
+    }
+
     const passwordHash = await bcrypt.hash(password, 10);
 
     const admin = new AdminUser({
@@ -62,7 +82,7 @@ export const createInitialAdmin = async (req: Request, res: Response) => {
 
 export const getAllUsers = async (req: Request, res: Response) => {
   try {
-    const { User } = require('../models/user.model');
+    // [STD-01] Uses top-level import — no more dynamic require()
     const users = await User.find().select('-passwordHash').sort({ createdAt: -1 });
     res.json(users);
   } catch (err) {

@@ -11,7 +11,8 @@ export class LogCompletionDto {
 export const logCompletionSchema = Joi.object({
   goalTemplateId: Joi.string().required(),
   date: Joi.string().isoDate().required(),
-  completedCount: Joi.number().min(0).required(),
+  completedCount: Joi.number().min(0).max(1000).required(), // [BUG-02] Cap at 1000
   note: Joi.string().optional(),
   source: Joi.string().valid('app', 'widget', 'wallpaper').optional(),
 });
+
