@@ -1,16 +1,21 @@
 import { Request, Response } from 'express';
-import { UserTree, UserTreeDocument } from '../models/user-tree.model';
+import { UserTree, UserTreeDocument, TreeGrowthStage } from '../models/user-tree.model';
 
-// ── Constants ────────────────────────────────────────────────────────
+// ── Streak-based stage thresholds (days of consistent streak) ────────
 
-const GROWTH_THRESHOLDS = {
-  seedling: 0,
-  sapling: 100,
-  growing: 300,
-  mature: 500,
-} as const;
+const STREAK_THRESHOLDS: { stage: TreeGrowthStage; minStreak: number }[] = [
+  { stage: 'mature', minStreak: 85 },
+  { stage: 'fruiting', minStreak: 75 },
+  { stage: 'blooming', minStreak: 65 },
+  { stage: 'flowering', minStreak: 55 },
+  { stage: 'growing', minStreak: 45 },
+  { stage: 'sapling_2', minStreak: 35 },
+  { stage: 'sapling_1', minStreak: 25 },
+  { stage: 'sapling', minStreak: 15 },
+  { stage: 'seedling', minStreak: 0 },
+];
 
-/** Growth points awarded per green/partial day (before bonus multiplier). */
+/** Points awarded per green/partial day for total score tracking. */
 const POINTS_GREEN = 10;
 const POINTS_PARTIAL = 3;
 
@@ -25,18 +30,19 @@ function getWaterBonus(consecutiveDays: number): number {
   return 0.3;
 }
 
-/** Derive growth stage from total points. */
-function deriveStage(points: number): UserTreeDocument['growthStage'] {
-  if (points >= GROWTH_THRESHOLDS.mature) return 'mature';
-  if (points >= GROWTH_THRESHOLDS.growing) return 'growing';
-  if (points >= GROWTH_THRESHOLDS.sapling) return 'sapling';
+/** Derive growth stage from consecutive streak days. */
+function deriveStageFromStreak(consecutiveDays: number): TreeGrowthStage {
+  for (const item of STREAK_THRESHOLDS) {
+    if (consecutiveDays >= item.minStreak) {
+      return item.stage;
+    }
+  }
   return 'seedling';
 }
 
 /**
  * Apply missed-day penalties for all dates between lastWateredDate and today
- * that were not watered. Mutates the tree document but does NOT save it —
- * caller is responsible for saving.
+ * that were not watered. Mutates the tree document but does NOT save it.
  */
 function applyMissedDayPenalties(tree: UserTreeDocument, today: string): void {
   if (!tree.lastWateredDate) return;
@@ -50,7 +56,7 @@ function applyMissedDayPenalties(tree: UserTreeDocument, today: string): void {
 
   for (let i = 0; i < missedDays; i++) {
     tree.missedDaysInRow += 1;
-    tree.consecutiveSuccessDays = 0;
+    tree.consecutiveSuccessDays = 0; // missed day breaks streak!
     const penalty = tree.missedDaysInRow * PENALTY_PER_MISSED_DAY;
     tree.healthPercentage = Math.max(0, tree.healthPercentage - penalty);
   }
@@ -84,8 +90,8 @@ export const getTreeStatus = async (req: any, res: Response) => {
     // Apply missed-day penalties since last watered date
     applyMissedDayPenalties(tree, today);
 
-    // Sync stage
-    tree.growthStage = deriveStage(tree.totalGrowthPoints);
+    // Sync stage based on streak days
+    tree.growthStage = deriveStageFromStreak(tree.consecutiveSuccessDays);
 
     await tree.save();
 
@@ -117,27 +123,32 @@ export const waterTree = async (req: any, res: Response) => {
     applyMissedDayPenalties(tree, today);
 
     if (dayStatus === 'grey') {
-      // No actual watering — just persist the penalty
+      // No actual watering — just persist the penalty & reset streak
+      tree.consecutiveSuccessDays = 0;
+      tree.growthStage = deriveStageFromStreak(0);
       await tree.save();
       return res.json(tree);
     }
 
-    // Calculate points earned
-    const basePoints = dayStatus === 'green' ? POINTS_GREEN : POINTS_PARTIAL;
-    const pointsEarned = Math.round(basePoints * tree.currentWaterBonus);
+    // Green day extends streak; partial day keeps streak but gives less points
+    if (dayStatus === 'green') {
+      tree.consecutiveSuccessDays += 1;
+    }
 
-    // Update streaks
-    tree.consecutiveSuccessDays += 1;
     tree.missedDaysInRow = 0;
     tree.currentWaterBonus = getWaterBonus(tree.consecutiveSuccessDays);
 
-    // Health: green days restore health, partial days give small restore
+    // Health: green days restore health (+8), partial days (+2)
     const healthGain = dayStatus === 'green' ? 8 : 2;
     tree.healthPercentage = Math.min(100, tree.healthPercentage + healthGain);
 
-    // Growth
+    // Growth points
+    const basePoints = dayStatus === 'green' ? POINTS_GREEN : POINTS_PARTIAL;
+    const pointsEarned = Math.round(basePoints * tree.currentWaterBonus);
     tree.totalGrowthPoints += pointsEarned;
-    tree.growthStage = deriveStage(tree.totalGrowthPoints);
+
+    // Growth stage is driven by consecutive success days!
+    tree.growthStage = deriveStageFromStreak(tree.consecutiveSuccessDays);
     tree.lastWateredDate = today;
 
     // Append watering record (keep last 90 entries)

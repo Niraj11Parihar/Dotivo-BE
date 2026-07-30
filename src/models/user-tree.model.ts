@@ -1,5 +1,16 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
+export type TreeGrowthStage =
+  | 'seedling'
+  | 'sapling'
+  | 'sapling_1'
+  | 'sapling_2'
+  | 'growing'
+  | 'flowering'
+  | 'blooming'
+  | 'fruiting'
+  | 'mature';
+
 export interface WateringRecord {
   date: string; // YYYY-MM-DD
   goalsCompleted: number;
@@ -9,7 +20,7 @@ export interface WateringRecord {
 export interface UserTreeDocument extends Document {
   userId: Types.ObjectId;
   treeName: string;
-  growthStage: 'seedling' | 'sapling' | 'growing' | 'mature';
+  growthStage: TreeGrowthStage;
   totalGrowthPoints: number;
   healthPercentage: number;
   consecutiveSuccessDays: number;
@@ -34,7 +45,17 @@ const UserTreeSchema = new Schema<UserTreeDocument>(
     treeName: { type: String, default: 'My Tree', maxlength: 30 },
     growthStage: {
       type: String,
-      enum: ['seedling', 'sapling', 'growing', 'mature'],
+      enum: [
+        'seedling',
+        'sapling',
+        'sapling_1',
+        'sapling_2',
+        'growing',
+        'flowering',
+        'blooming',
+        'fruiting',
+        'mature',
+      ],
       default: 'seedling',
     },
     totalGrowthPoints: { type: Number, default: 0, min: 0 },
