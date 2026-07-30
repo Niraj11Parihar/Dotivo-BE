@@ -76,7 +76,7 @@ async function findOrCreateTree(userId: string): Promise<UserTreeDocument> {
 /** GET /tree — fetch or auto-create the user's tree, applying any penalties. */
 export const getTreeStatus = async (req: any, res: Response) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user.sub || req.user.userId || req.user.id;
     const today = getToday();
 
     const tree = await findOrCreateTree(userId);
@@ -102,7 +102,7 @@ export const getTreeStatus = async (req: any, res: Response) => {
  */
 export const waterTree = async (req: any, res: Response) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user.sub || req.user.userId || req.user.id;
     const today = getToday();
     const { goalsCompleted = 0, totalGoals = 0, dayStatus = 'grey' } = req.body;
 
@@ -158,7 +158,7 @@ export const waterTree = async (req: any, res: Response) => {
 /** PATCH /tree/name — rename the user's tree. Body: { name: string } */
 export const setTreeName = async (req: any, res: Response) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user.sub || req.user.userId || req.user.id;
     const { name } = req.body;
 
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
@@ -182,7 +182,7 @@ export const setTreeName = async (req: any, res: Response) => {
 /** GET /tree/history — last 30 watering records. */
 export const getTreeHistory = async (req: any, res: Response) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user.sub || req.user.userId || req.user.id;
     const tree = await UserTree.findOne({ userId });
     if (!tree) return res.json([]);
 
