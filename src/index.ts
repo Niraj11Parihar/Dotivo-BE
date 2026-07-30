@@ -10,6 +10,7 @@ import usersRoutes from './routes/users.routes';
 import goalsRoutes from './routes/goals.routes';
 import dailyPlanRoutes from './routes/daily-plan.routes';
 import adminRoutes from './routes/admin.routes';
+import treeRoutes from './routes/tree.routes';
 import { getActiveQuotesByCategory } from './controllers/quote.controller';
 
 const app = express();
@@ -18,7 +19,7 @@ const app = express();
 
 // [SEC-09] CORS — restrict to known origins instead of wildcard.
 // Add your admin dashboard domain to ALLOWED_ORIGINS when deployed.
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3001')
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:3001')
   .split(',')
   .map((o) => o.trim());
 
@@ -27,7 +28,7 @@ app.use(cors({
     // Allow requests with no origin (mobile apps, curl, Postman)
     if (!origin) return callback(null, true);
     if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
-    return callback(new Error(`CORS: Origin '${origin}' not allowed`));
+    return callback(null, false);
   },
   credentials: true,
 }));
@@ -66,6 +67,7 @@ app.use('/auth', authRoutes);
 app.use('/users', usersRoutes);
 app.use('/goals', goalsRoutes);
 app.use('/admin', adminRoutes);
+app.use('/tree', treeRoutes);
 app.get('/public/quotes', getActiveQuotesByCategory);
 
 // Health Check (registered before the '/' wildcard mount)
