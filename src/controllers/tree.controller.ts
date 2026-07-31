@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import { UserTree, UserTreeDocument, TreeGrowthStage } from '../models/user-tree.model';
+import { DayStatus } from '../models/day-status.model';
 
 // ── Streak-based stage thresholds (days of consistent streak) ────────
 
@@ -102,63 +104,103 @@ export const getTreeStatus = async (req: any, res: Response) => {
   }
 };
 
+async function syncStreakFromHistory(userId: string, today: string, todayStatusOverride?: string): Promise<number> {
+  const statuses = await DayStatus.find({ userId: new mongoose.Types.ObjectId(userId) })
+    .sort({ date: -1 })
+    .limit(90);
+
+  let streak = 0;
+  let checkDate = new Date(today + 'T12:00:00');
+  checkDate.setDate(checkDate.getDate() - 1); // Start from yesterday
+
+  for (let i = 1; i <= 90; i++) {
+    const dStr = checkDate.toISOString().slice(0, 10);
+    const st = statuses.find(s => s.date === dStr);
+    const status = st ? st.status : 'grey';
+
+    if (status === 'green') {
+      streak++;
+    } else if (status === 'partial') {
+      // Keeps streak but doesn't increment
+    } else {
+      // Grey or missing day breaks streak
+      break;
+    }
+    checkDate.setDate(checkDate.getDate() - 1);
+  }
+
+  let todayStatus = 'grey';
+  if (todayStatusOverride !== undefined) {
+    todayStatus = todayStatusOverride;
+  } else {
+    const todaySt = statuses.find(s => s.date === today);
+    todayStatus = todaySt ? todaySt.status : 'grey';
+  }
+
+  if (todayStatus === 'green') {
+    streak++;
+  }
+  
+  return streak;
+}
+
 /**
  * POST /tree/water — record today's watering.
- * Body: { goalsCompleted: number, totalGoals: number, dayStatus: 'green' | 'partial' | 'grey' }
+ * Body: { goalsCompleted: number, totalGoals: number, dayStatus: 'green' | 'partial' | 'grey', date?: string }
  */
 export const waterTree = async (req: any, res: Response) => {
   try {
     const userId = req.user.sub || req.user.userId || req.user.id;
-    const today = getToday();
     const { goalsCompleted = 0, totalGoals = 0, dayStatus = 'grey' } = req.body;
+    // Allow frontend to pass date, fallback to UTC today
+    const today = req.body.date || getToday(); 
 
     const tree = await findOrCreateTree(userId);
-
-    // Idempotent: one watering per day
-    if (tree.lastWateredDate === today) {
-      return res.status(400).json({ message: 'Already watered today.' });
-    }
 
     // Apply missed-day penalties for skipped days before today
     applyMissedDayPenalties(tree, today);
 
-    if (dayStatus === 'grey') {
-      // No actual watering — just persist the penalty & reset streak
-      tree.consecutiveSuccessDays = 0;
-      tree.growthStage = deriveStageFromStreak(0);
-      await tree.save();
-      return res.json(tree);
-    }
-
-    // Green day extends streak; partial day keeps streak but gives less points
-    if (dayStatus === 'green') {
-      tree.consecutiveSuccessDays += 1;
-    }
-
-    tree.missedDaysInRow = 0;
+    // Sync streak accurately from history based on today's updated status
+    const trueStreak = await syncStreakFromHistory(userId, today, dayStatus);
+    tree.consecutiveSuccessDays = trueStreak;
+    tree.growthStage = deriveStageFromStreak(tree.consecutiveSuccessDays);
+    
     tree.currentWaterBonus = getWaterBonus(tree.consecutiveSuccessDays);
 
-    // Health: green days restore health (+8), partial days (+2)
-    const healthGain = dayStatus === 'green' ? 8 : 2;
-    tree.healthPercentage = Math.min(100, tree.healthPercentage + healthGain);
+    const existingIndex = tree.wateringHistory.findIndex(h => h.date === today);
+    
+    if (dayStatus !== 'grey') {
+       if (existingIndex === -1) {
+         // First time watering today!
+         const healthGain = dayStatus === 'green' ? 8 : 2;
+         tree.healthPercentage = Math.min(100, tree.healthPercentage + healthGain);
+         
+         const basePoints = dayStatus === 'green' ? POINTS_GREEN : POINTS_PARTIAL;
+         const pointsEarned = Math.round(basePoints * tree.currentWaterBonus);
+         tree.totalGrowthPoints += pointsEarned;
+         tree.missedDaysInRow = 0;
+         tree.lastWateredDate = today;
+         
+         tree.wateringHistory.push({ date: today, goalsCompleted, totalGoals });
+       } else {
+         // Already watered today, just updating the goals completed count
+         tree.wateringHistory[existingIndex].goalsCompleted = goalsCompleted;
+         tree.wateringHistory[existingIndex].totalGoals = totalGoals;
+       }
+    } else {
+       // dayStatus is grey (e.g. user undid their goal)
+       // We update the history so the UI knows it's undone
+       if (existingIndex !== -1) {
+         tree.wateringHistory[existingIndex].goalsCompleted = goalsCompleted;
+         tree.wateringHistory[existingIndex].totalGoals = totalGoals;
+       }
+    }
 
-    // Growth points
-    const basePoints = dayStatus === 'green' ? POINTS_GREEN : POINTS_PARTIAL;
-    const pointsEarned = Math.round(basePoints * tree.currentWaterBonus);
-    tree.totalGrowthPoints += pointsEarned;
-
-    // Growth stage is driven by consecutive success days!
-    tree.growthStage = deriveStageFromStreak(tree.consecutiveSuccessDays);
-    tree.lastWateredDate = today;
-
-    // Append watering record (keep last 90 entries)
-    tree.wateringHistory.push({ date: today, goalsCompleted, totalGoals });
     if (tree.wateringHistory.length > 90) {
       tree.wateringHistory = tree.wateringHistory.slice(-90);
     }
 
     await tree.save();
-
     res.json(tree);
   } catch (err) {
     console.error('waterTree error:', err);
