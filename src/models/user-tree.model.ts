@@ -69,6 +69,4 @@ const UserTreeSchema = new Schema<UserTreeDocument>(
   { timestamps: true }
 );
 
-UserTreeSchema.index({ userId: 1 });
-
 export const UserTree = mongoose.model<UserTreeDocument>('UserTree', UserTreeSchema);

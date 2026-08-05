@@ -5,15 +5,27 @@ import { DayStatus } from '../models/day-status.model';
 
 // ── Streak-based stage thresholds (days of consistent streak) ────────
 
+// const STREAK_THRESHOLDS: { stage: TreeGrowthStage; minStreak: number }[] = [
+//   { stage: 'mature', minStreak: 85 },
+//   { stage: 'fruiting', minStreak: 75 },
+//   { stage: 'blooming', minStreak: 65 },
+//   { stage: 'flowering', minStreak: 55 },
+//   { stage: 'growing', minStreak: 45 },
+//   { stage: 'sapling_2', minStreak: 35 },
+//   { stage: 'sapling_1', minStreak: 25 },
+//   { stage: 'sapling', minStreak: 1 },
+//   { stage: 'seedling', minStreak: 0 },
+// ];
+
 const STREAK_THRESHOLDS: { stage: TreeGrowthStage; minStreak: number }[] = [
-  { stage: 'mature', minStreak: 85 },
-  { stage: 'fruiting', minStreak: 75 },
-  { stage: 'blooming', minStreak: 65 },
-  { stage: 'flowering', minStreak: 55 },
-  { stage: 'growing', minStreak: 45 },
-  { stage: 'sapling_2', minStreak: 35 },
-  { stage: 'sapling_1', minStreak: 25 },
-  { stage: 'sapling', minStreak: 15 },
+  { stage: 'mature', minStreak: 8 },
+  { stage: 'fruiting', minStreak: 7 },
+  { stage: 'blooming', minStreak: 6 },
+  { stage: 'flowering', minStreak: 5 },
+  { stage: 'growing', minStreak: 4 },
+  { stage: 'sapling_2', minStreak: 3 },
+  { stage: 'sapling_1', minStreak: 2 },
+  { stage: 'sapling', minStreak: 1 },
   { stage: 'seedling', minStreak: 0 },
 ];
 
@@ -140,7 +152,7 @@ async function syncStreakFromHistory(userId: string, today: string, todayStatusO
   if (todayStatus === 'green') {
     streak++;
   }
-  
+
   return streak;
 }
 
@@ -153,7 +165,7 @@ export const waterTree = async (req: any, res: Response) => {
     const userId = req.user.sub || req.user.userId || req.user.id;
     const { goalsCompleted = 0, totalGoals = 0, dayStatus = 'grey' } = req.body;
     // Allow frontend to pass date, fallback to UTC today
-    const today = req.body.date || getToday(); 
+    const today = req.body.date || getToday();
 
     const tree = await findOrCreateTree(userId);
 
@@ -164,36 +176,36 @@ export const waterTree = async (req: any, res: Response) => {
     const trueStreak = await syncStreakFromHistory(userId, today, dayStatus);
     tree.consecutiveSuccessDays = trueStreak;
     tree.growthStage = deriveStageFromStreak(tree.consecutiveSuccessDays);
-    
+
     tree.currentWaterBonus = getWaterBonus(tree.consecutiveSuccessDays);
 
     const existingIndex = tree.wateringHistory.findIndex(h => h.date === today);
-    
+
     if (dayStatus !== 'grey') {
-       if (existingIndex === -1) {
-         // First time watering today!
-         const healthGain = dayStatus === 'green' ? 8 : 2;
-         tree.healthPercentage = Math.min(100, tree.healthPercentage + healthGain);
-         
-         const basePoints = dayStatus === 'green' ? POINTS_GREEN : POINTS_PARTIAL;
-         const pointsEarned = Math.round(basePoints * tree.currentWaterBonus);
-         tree.totalGrowthPoints += pointsEarned;
-         tree.missedDaysInRow = 0;
-         tree.lastWateredDate = today;
-         
-         tree.wateringHistory.push({ date: today, goalsCompleted, totalGoals });
-       } else {
-         // Already watered today, just updating the goals completed count
-         tree.wateringHistory[existingIndex].goalsCompleted = goalsCompleted;
-         tree.wateringHistory[existingIndex].totalGoals = totalGoals;
-       }
+      if (existingIndex === -1) {
+        // First time watering today!
+        const healthGain = dayStatus === 'green' ? 8 : 2;
+        tree.healthPercentage = Math.min(100, tree.healthPercentage + healthGain);
+
+        const basePoints = dayStatus === 'green' ? POINTS_GREEN : POINTS_PARTIAL;
+        const pointsEarned = Math.round(basePoints * tree.currentWaterBonus);
+        tree.totalGrowthPoints += pointsEarned;
+        tree.missedDaysInRow = 0;
+        tree.lastWateredDate = today;
+
+        tree.wateringHistory.push({ date: today, goalsCompleted, totalGoals });
+      } else {
+        // Already watered today, just updating the goals completed count
+        tree.wateringHistory[existingIndex].goalsCompleted = goalsCompleted;
+        tree.wateringHistory[existingIndex].totalGoals = totalGoals;
+      }
     } else {
-       // dayStatus is grey (e.g. user undid their goal)
-       // We update the history so the UI knows it's undone
-       if (existingIndex !== -1) {
-         tree.wateringHistory[existingIndex].goalsCompleted = goalsCompleted;
-         tree.wateringHistory[existingIndex].totalGoals = totalGoals;
-       }
+      // dayStatus is grey (e.g. user undid their goal)
+      // We update the history so the UI knows it's undone
+      if (existingIndex !== -1) {
+        tree.wateringHistory[existingIndex].goalsCompleted = goalsCompleted;
+        tree.wateringHistory[existingIndex].totalGoals = totalGoals;
+      }
     }
 
     if (tree.wateringHistory.length > 90) {
