@@ -1,11 +1,33 @@
 import { Request, Response } from 'express';
 import mongoose, { Types } from 'mongoose';
 
-import { format } from 'date-fns';
 import { DailyPlan } from '../models/daily-plan.model';
 import { GoalCompletion } from '../models/goal-completion.model';
 import { DayStatus } from '../models/day-status.model';
 import { GoalTemplate } from '../models/goal-template.model';
+
+/**
+ * Returns today's date as a YYYY-MM-DD string **in the client's local timezone**
+ * using the X-Timezone header (e.g., "Asia/Kolkata"), falling back to UTC.
+ * This prevents IST/UTC off-by-1-day bugs on the Render server (which runs in UTC).
+ */
+function getTodayForRequest(req: any): string {
+  const tz = req.headers['x-timezone'] as string | undefined;
+  try {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz || 'UTC',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    // en-CA locale gives YYYY-MM-DD format natively
+    return formatter.format(now);
+  } catch {
+    // Fallback: plain UTC date
+    return new Date().toISOString().slice(0, 10);
+  }
+}
 
 const evaluateAndSaveDayStatus = async (userId: string, date: string, plan: any, session?: any) => {
   let minimumsMet = true;
@@ -106,7 +128,7 @@ const generatePlanForDate = async (userId: string, date: string) => {
 export const getDailyPlan = async (req: any, res: Response) => {
   try {
     const userId = req.user.sub;
-    const targetDate = (req.query.date as string) || format(new Date(), 'yyyy-MM-dd');
+    const targetDate = (req.query.date as string) || getTodayForRequest(req);
     
     let plan = await DailyPlan.findOne({ userId: new Types.ObjectId(userId), date: targetDate }).exec();
     if (!plan) {

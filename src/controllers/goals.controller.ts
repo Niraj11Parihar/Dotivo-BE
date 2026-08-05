@@ -1,8 +1,11 @@
 import { Request, Response } from 'express';
 import { Types } from 'mongoose';
-import { format } from 'date-fns';
 import { GoalTemplate } from '../models/goal-template.model';
 import { DailyPlan } from '../models/daily-plan.model';
+
+function getLocalDateUTC(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 // Explicit allowlist of fields a user may update on their own goal template.
 // This is the last line of defence against mass-assignment, even if Joi is misconfigured.
@@ -62,7 +65,7 @@ export const update = async (req: any, res: Response) => {
 export const deleteGoal = async (req: any, res: Response) => {
   try {
     const userId = req.user.sub;
-    const targetDate = format(new Date(), 'yyyy-MM-dd');
+    const targetDate = getLocalDateUTC();
 
     const deletedGoal = await GoalTemplate.findOneAndDelete({
       _id: new Types.ObjectId(req.params.id),
